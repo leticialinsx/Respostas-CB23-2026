@@ -56,3 +56,23 @@ O que mais me surpreendeu foi `s.sum()` devolver uma `SerieTemporal` (um array d
 ### R7 — Issue #4
 
 Sintoma: 600 leituras e janela 30 davam 570 valores, não 571. Regressão: `test_tamanho_de_600_com_janela_30` e `test_primeira_media_inclui_o_inicio_da_serie`, que falhavam antes da correção. Causa: `cumsum[i]` já inclui o elemento `i`, então `acumulada[janela:] - acumulada[:-janela]` somava `self[i+1 : i+janela+1]`: a primeira janela (`self[0:janela]`) se perdia. Correção: um `0` na frente da soma acumulada. Os de aceitação só conferem o tipo de retorno e os erros de janela (0 e 6) de `media_movel`, nunca o tamanho nem os valores; com o defeito, todos passavam. Caso não coberto: janela igual a `len(s)` (dava zero valores), coberto por `test_janela_igual_ao_tamanho`.
+
+## Marco 2
+
+### Ambiente
+
+```
+Python 3.12.3 | NumPy 2.5.4 | SciPy 1.18.1 | fornecido 4.0 | matrícula 3478
+```
+
+### R8 — Derivada numérica
+
+De h = 1 até h = 1e-5 o erro cai de 1,7e-05 para 6,2e-10 (o menor da tabela está em h = 1e-5): domina o erro de truncamento da diferença adiante, que é proporcional a h (termo f''·h/2 da série de Taylor). Para h menor, domina o erro de arredondamento: f(x+h) e f(x) ficam quase iguais, a subtração cancela algarismos e o erro cresce como ε·|f|/h. Em h = 1e-14, `1000 + 1e-14 == 1000` (o passo é menor que o espaçamento entre números perto de 1000), então f(x+h) − f(x) = 0, a derivada calculada é 0 e o erro é |0 − exata| = a própria derivada (0,2134 kPa/contagem).
+
+### R9 — Issue #7
+
+Testes de regressão: `test_um_milhao_de_decimos_de_litro`, `test_kahan_bem_melhor_que_o_ingenuo`, `test_parcelas_menores_que_o_arredondamento` e `test_valores_variados_contra_math_fsum`; todos falhavam antes da correção. Causa: `t = s + y` e depois `t - (s + y)`: a segunda soma repete a mesma conta com os mesmos operandos e dá exatamente o mesmo `t`, então o resultado é sempre 0 e a correção nunca guarda nada. Algebricamente é igual a `(t - s) - y`, mas em ponto flutuante não: `t - s` recupera o que realmente entrou em `t`, e subtrair `y` deixa o que se perdeu. Correção: `(t - self._soma) - y`. Os testes de aceitação somam só 10 parcelas de 0,1 e comparam com `math.isclose`; com tão poucas parcelas o ingênuo e o Kahan dão praticamente o mesmo total, e o defeito não aparece.
+
+### R10 — Precisão × exatidão
+
+Os desvios são praticamente iguais (linear 0,569 kPa, spline 0,571 kPa): a precisão, isto é, a dispersão das leituras em torno da própria média, não depende da curva. Já o viés (média menos 380 kPa) é -1,812 kPa na linear e 0,018 kPa na spline: a exatidão, isto é, a proximidade do valor verdadeiro, é bem pior na linear. O erro padrão da média é só cerca de 0,023 kPa (desvio/√595), então a média de quase 600 leituras reduz o erro aleatório, mas não o viés: ele vem da interpolação linear (erro máximo de 2,88 kPa), é sistemático e igual em todas as leituras, e por isso não se cancela ao tirar a média.
